@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Manage Buildings</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid black; padding: 10px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        button { margin: 5px; padding: 5px 10px; }
+        .error { color: red; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h2>Admin Dashboard - Manage Buildings</h2>
+    
+    <h3>Add/Edit Building</h3>
+    <label for="admin-country">Country:</label>
+    <select id="admin-country">
+        <option value="">-- Select Country --</option>
+        <option value="Bahrain">Bahrain</option>
+        <option value="Saudi Arabia">Saudi Arabia</option>
+        <option value="other">Other (Add Manually)</option>
+    </select>
+    <input type="text" id="admin-new-country" placeholder="Enter new country" style="display:none;">
+    <div id="country-error" class="error"></div>
+    
+    <label for="admin-city">City:</label>
+    <input type="text" id="admin-city">
+    <div id="city-error" class="error"></div>
+    
+    <label for="admin-building">Building Name:</label>
+    <input type="text" id="admin-building">
+    <div id="building-error" class="error"></div>
+    
+    <label for="admin-split">Split Screen Rate (30 days):</label>
+    <input type="number" id="admin-split">
+    <div id="split-error" class="error"></div>
+    
+    <label for="admin-full">Full Screen Rate (30 days):</label>
+    <input type="number" id="admin-full">
+    <div id="full-error" class="error"></div>
+    
+    <label for="admin-classification">Classification:</label>
+    <select id="admin-classification">
+        <option value="">-- Select Classification --</option>
+        <option value="Commercial">Commercial</option>
+        <option value="Residential">Residential</option>
+        <option value="Hotel">Hotel</option>
+        <option value="Mall">Mall</option>
+    </select>
+    <div id="classification-error" class="error"></div>
+    
+    <button onclick="addBuilding()">Add/Update Building</button>
+    <button onclick="goBack()">Back to Main Page</button>
+    
+    <h3>Buildings List</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Building Name</th>
+                <th>City</th>
+                <th>Country</th>
+                <th>Classification</th>
+                <th>Split Screen Rate</th>
+                <th>Full Screen Rate</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="building-table-body"></tbody>
+    </table>
+    
+    <script>
+        let pricingData = JSON.parse(localStorage.getItem("pricingData")) || {};
+
+        function displayBuildings() {
+            const tableBody = document.getElementById("building-table-body");
+            tableBody.innerHTML = "";
+            
+            Object.keys(pricingData).forEach(country => {
+                Object.keys(pricingData[country]).forEach(city => {
+                    Object.keys(pricingData[country][city]).forEach(building => {
+                        let data = pricingData[country][city][building];
+                        let row = `<tr>
+                            <td>${building}</td>
+                            <td>${city}</td>
+                            <td>${country}</td>
+                            <td>${data.classification}</td>
+                            <td>BD ${data.split}</td>
+                            <td>BD ${data.full}</td>
+                            <td>
+                                <button onclick="editBuilding('${country}', '${city}', '${building}')">Edit</button>
+                                <button onclick="deleteBuilding('${country}', '${city}', '${building}')">Delete</button>
+                            </td>
+                        </tr>`;
+                        tableBody.innerHTML += row;
+                    });
+                });
+            });
+        }
+        
+        function addBuilding() {
+            // Clear previous errors
+            document.querySelectorAll('.error').forEach(el => el.textContent = '');
+
+            let country = document.getElementById("admin-country").value;
+            if (country === "other") {
+                country = document.getElementById("admin-new-country").value;
+                if (!country) {
+                    document.getElementById("country-error").textContent = "Please enter a new country name.";
+                    return;
+                }
+            } else if (!country) {
+                document.getElementById("country-error").textContent = "Please select a country.";
+                return;
+            }
+            
+            let city = document.getElementById("admin-city").value;
+            if (!city) {
+                document.getElementById("city-error").textContent = "Please enter a city.";
+                return;
+            }
+            
+            let building = document.getElementById("admin-building").value;
+            if (!building) {
+                document.getElementById("building-error").textContent = "Please enter a building name.";
+                return;
+            }
+            
+            let splitRate = parseFloat(document.getElementById("admin-split").value);
+            if (isNaN(splitRate) || splitRate <= 0) {
+                document.getElementById("split-error").textContent = "Please enter a valid split screen rate (must be a positive number).";
+                return;
+            }
+            
+            let fullRate = parseFloat(document.getElementById("admin-full").value);
+            if (isNaN(fullRate) || fullRate <= 0) {
+                document.getElementById("full-error").textContent = "Please enter a valid full screen rate (must be a positive number).";
+                return;
+            }
+            
+            let classification = document.getElementById("admin-classification").value;
+            if (!classification) {
+                document.getElementById("classification-error").textContent = "Please select a classification.";
+                return;
+            }
+            
+            // Check for duplicate building in the same city and country
+            if (pricingData[country] && pricingData[country][city] && pricingData[country][city][building]) {
+                document.getElementById("building-error").textContent = "This building already exists in the selected city and country.";
+                return;
+            }
+            
+            if (!pricingData[country]) pricingData[country] = {};
+            if (!pricingData[country][city]) pricingData[country][city] = {};
+            
+            pricingData[country][city][building] = {
+                split: splitRate,
+                full: fullRate,
+                classification: classification
+            };
+            
+            localStorage.setItem("pricingData", JSON.stringify(pricingData));
+            alert("Building added/updated successfully!");
+            displayBuildings();
+        }
+        
+        function editBuilding(country, city, building) {
+            let data = pricingData[country][city][building];
+            document.getElementById("admin-country").value = country;
+            document.getElementById("admin-city").value = city;
+            document.getElementById("admin-building").value = building;
+            document.getElementById("admin-split").value = data.split;
+            document.getElementById("admin-full").value = data.full;
+            document.getElementById("admin-classification").value = data.classification;
+        }
+        
+        function deleteBuilding(country, city, building) {
+            if (confirm(`Are you sure you want to delete ${building}?`)) {
+                delete pricingData[country][city][building];
+                localStorage.setItem("pricingData", JSON.stringify(pricingData));
+                displayBuildings();
+            }
+        }
+        
+        function goBack() {
+            window.location.href = "pricing.html";
+        }
+
+        document.getElementById("admin-country").addEventListener("change", function() {
+            const newCountryInput = document.getElementById("admin-new-country");
+            if (this.value === "other") {
+                newCountryInput.style.display = "inline-block";
+            } else {
+                newCountryInput.style.display = "none";
+            }
+        });
+
+        document.addEventListener("DOMContentLoaded", displayBuildings);
+    </script>
+</body>
+</html>

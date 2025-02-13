@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign Pricing Calculator</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        label { font-weight: bold; }
+        select, input, button { margin: 10px 0; padding: 5px; width: 200px; }
+        #result, #total-result { margin-top: 20px; font-size: 18px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid black; padding: 10px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .error { color: red; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h2>Campaign Pricing Calculator</h2>
+    
+    <label for="country">Select Country:</label>
+    <select id="country" onchange="updateBuildings()">
+        <option value="">-- Select Country --</option>
+    </select>
+    <div id="country-error" class="error"></div>
+    
+    <label for="buildings">Select Buildings:</label>
+    <div id="building-list"></div>
+    <div id="buildings-error" class="error"></div>
+    
+    <label for="duration">Enter Duration (Days):</label>
+    <input type="number" id="duration" min="1" value="30">
+    <div id="duration-error" class="error"></div>
+    
+    <label for="discount">Enter Discount (%):</label>
+    <input type="number" id="discount" min="0" max="100" value="0">
+    <div id="discount-error" class="error"></div>
+    
+    <button onclick="calculatePrice()">Calculate</button>
+    <button onclick="exportToExcel()">Export to Excel</button>
+    
+    <div id="total-result"></div>
+    
+    <h3>Selected Building Rate Table</h3>
+    <div id="result"></div>
+    <table id="rate-table">
+        <thead>
+            <tr>
+                <th>Building Name</th>
+                <th>Original Split Screen Rate</th>
+                <th>Discounted Split Screen Rate</th>
+                <th>Original Full Screen Rate</th>
+                <th>Discounted Full Screen Rate</th>
+                <th>City</th>
+                <th>Country</th>
+                <th>Classification</th>
+            </tr>
+        </thead>
+        <tbody id="rate-table-body"></tbody>
+    </table>
+    
+    <button onclick="promptAdminAccess()">Admin Login</button>
+    
+    <!-- Add the SheetJS library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.4/xlsx.full.min.js"></script>
+    
+    <script>
+        let pricingData = JSON.parse(localStorage.getItem("pricingData")) || {};
+
+        function loadCountries() {
+            const countrySelect = document.getElementById("country");
+            countrySelect.innerHTML = '<option value="">-- Select Country --</option>';
+            Object.keys(pricingData).forEach(country => {
+                let option = document.createElement("option");
+                option.value = country;
+                option.textContent = country;
+                countrySelect.appendChild(option);
+            });
+        }
+        
+        function updateBuildings() {
+            const country = document.getElementById("country").value;
+            const buildingList = document.getElementById("building-list");
+            buildingList.innerHTML = "";
+
+            if (country && pricingData[country]) {
+                Object.keys(pricingData[country]).forEach(city => {
+                    Object.keys(pricingData[country][city]).forEach(building => {
+                        let checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.value = building;
+                        checkbox.id = building;
+
+                        let label = document.createElement("label");
+                        label.htmlFor = building;
+                        label.textContent = `${building} (${city})`;
+
+                        let div = document.createElement("div");
+                        div.appendChild(checkbox);
+                        div.appendChild(label);
+
+                        buildingList.appendChild(div);
+                    });
+                });
+            }
+        }
+        
+        function promptAdminAccess() {
+            let password = prompt("Enter Admin Password:");
+            if (password === "1234") {
+                window.location.href = "admin.html";
+            } else {
+                alert("Incorrect password!");
+            }
+        }
+
+        function calculatePrice() {
+            // Clear previous errors
+            document.querySelectorAll('.error').forEach(el => el.textContent = '');
+
+            const country = document.getElementById("country").value;
+            const selectedBuildings = Array.from(document.querySelectorAll('#building-list input:checked')).map(cb => cb.value);
+            const discount = parseFloat(document.getElementById("discount").value);
+            const duration = parseFloat(document.getElementById("duration").value);
+            const rateTableBody = document.getElementById("rate-table-body");
+            const totalResultDiv = document.getElementById("total-result");
+
+            rateTableBody.innerHTML = "";
+            totalResultDiv.innerHTML = "";
+
+            // Validation
+            if (!country) {
+                document.getElementById("country-error").textContent = "Please select a country.";
+                return;
+            }
+            if (selectedBuildings.length === 0) {
+                document.getElementById("buildings-error").textContent = "Please select at least one building.";
+                return;
+            }
+            if (isNaN(duration) || duration <= 0) {
+                document.getElementById("duration-error").textContent = "Please enter a valid duration (must be a positive number).";
+                return;
+            }
+            if (isNaN(discount) || discount < 0 || discount > 100) {
+                document.getElementById("discount-error").textContent = "Please enter a valid discount (must be between 0 and 100).";
+                return;
+            }
+
+            let totalOriginalSplit = 0;
+            let totalDiscountedSplit = 0;
+            let totalOriginalFull = 0;
+            let totalDiscountedFull = 0;
+
+            selectedBuildings.forEach(building => {
+                Object.keys(pricingData[country]).forEach(city => {
+                    if (pricingData[country][city][building]) {
+                        let originalSplit = (pricingData[country][city][building].split / 30) * duration;
+                        let discountedSplit = originalSplit * (1 - discount / 100);
+                        let originalFull = (pricingData[country][city][building].full / 30) * duration;
+                        let discountedFull = originalFull * (1 - discount / 100);
+
+                        totalOriginalSplit += originalSplit;
+                        totalDiscountedSplit += discountedSplit;
+                        totalOriginalFull += originalFull;
+                        totalDiscountedFull += discountedFull;
+
+                        let row = `<tr>
+                            <td>${building}</td>
+                            <td>BD ${originalSplit.toFixed(2)}</td>
+                            <td>BD ${discountedSplit.toFixed(2)}</td>
+                            <td>BD ${originalFull.toFixed(2)}</td>
+                            <td>BD ${discountedFull.toFixed(2)}</td>
+                            <td>${city}</td>
+                            <td>${country}</td>
+                            <td>${pricingData[country][city][building].classification}</td>
+                        </tr>`;
+                        rateTableBody.innerHTML += row;
+                    }
+                });
+            });
+
+            totalResultDiv.innerHTML = `<h3>Total Rates</h3>
+                <p><strong>Total Original Split Screen Rate:</strong> BD ${totalOriginalSplit.toFixed(2)}</p>
+                <p><strong>Total Discounted Split Screen Rate:</strong> BD ${totalDiscountedSplit.toFixed(2)}</p>
+                <p><strong>Total Original Full Screen Rate:</strong> BD ${totalOriginalFull.toFixed(2)}</p>
+                <p><strong>Total Discounted Full Screen Rate:</strong> BD ${totalDiscountedFull.toFixed(2)}</p>`;
+        }
+
+        function exportToExcel() {
+            const table = document.getElementById("rate-table");
+            const ws = XLSX.utils.table_to_sheet(table);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Rates");
+            XLSX.writeFile(wb, "Campaign_Rates.xlsx");
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            loadCountries();
+            updateBuildings();
+        });
+    </script>
+</body>
+</html>
